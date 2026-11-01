@@ -35,7 +35,8 @@ class PlayerListener final : public sendspin::PlayerRoleListener {
 public:
     /// Wires sink.on_frames_played to player.notify_audio_played(); arguments must outlive this.
     /// @param store Where server-set volume and mute persist; null opts out.
-    PlayerListener(sendspin::PlayerRole& player, AudioSink& sink, StateStore* store = nullptr);
+    /// @param player Null under --source-only; the role callbacks then never fire.
+    PlayerListener(sendspin::PlayerRole* player, AudioSink& sink, StateStore* store = nullptr);
 
     /// Fired on the main loop at stream start (true) and end (false), refused formats included.
     std::function<void(bool started)> on_stream_event;
@@ -88,7 +89,7 @@ private:
     /// Writes the applied pair to the store, if any, reporting nothing.
     void persist_volume() const;
 
-    sendspin::PlayerRole& player_;
+    sendspin::PlayerRole* player_;
     AudioSink& sink_;
     StateStore* store_;
 

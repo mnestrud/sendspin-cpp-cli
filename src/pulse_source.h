@@ -81,6 +81,7 @@ private:
     std::string record_from_;  ///< empty for the server's default source
     std::optional<std::string> looped_sink_;
     std::string looped_sink_name_;  ///< the default sink's own name when looped_sink_ is empty
+    uint32_t resolved_rate_{0};     ///< the monitored sink's own rate, 0 when unknown
 
     pa_stream* stream_{nullptr};
     uint32_t rate_{0};

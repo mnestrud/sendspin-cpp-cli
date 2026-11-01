@@ -79,6 +79,7 @@ enum LongOnly {
     OPT_INPUT,
     OPT_PAIRING_CODE,
     OPT_FIXED_VOLUME,
+    OPT_SOURCE_ONLY,
     OPT_RELEASE_DEVICE,
 };
 
@@ -120,6 +121,7 @@ const std::vector<SettableOption>& settable_options() {
         {Opt::AllowUnpaired, "allow-unpaired", "--allow-unpaired"},
         {Opt::PairingCode, "pairing-code", "--pairing-code"},
         {Opt::FixedVolume, "fixed-volume", "--fixed-volume"},
+        {Opt::SourceOnly, "source-only", "--source-only"},
         {Opt::ReleaseDevice, "release-device", "--release-device"},
     };
     return table;
@@ -425,6 +427,12 @@ bool apply_option(const SettableOption& option, const std::string& value, Option
                 return false;
             }
             break;
+        case Opt::SourceOnly:
+            if (!parse_bool(value, out.source_only)) {
+                error = "invalid --source-only '" + value + "' -- expected true or false";
+                return false;
+            }
+            break;
         case Opt::ReleaseDevice:
             if (!parse_bool(value, out.release_device)) {
                 error = "invalid --release-device '" + value + "' -- expected true or false";
@@ -608,6 +616,7 @@ bool parse_options(int argc, char* argv[], Options& out, std::FILE* err) {
         {"allow-unpaired", no_argument, nullptr, OPT_ALLOW_UNPAIRED},
         {"pairing-code", required_argument, nullptr, OPT_PAIRING_CODE},
         {"fixed-volume", no_argument, nullptr, OPT_FIXED_VOLUME},
+        {"source-only", no_argument, nullptr, OPT_SOURCE_ONLY},
         {"release-device", no_argument, nullptr, OPT_RELEASE_DEVICE},
         {nullptr, 0, nullptr, 0},
     };
@@ -754,6 +763,9 @@ bool parse_options(int argc, char* argv[], Options& out, std::FILE* err) {
             case OPT_FIXED_VOLUME:
                 apply(Opt::FixedVolume, "true");
                 break;
+            case OPT_SOURCE_ONLY:
+                apply(Opt::SourceOnly, "true");
+                break;
             case OPT_RELEASE_DEVICE:
                 apply(Opt::ReleaseDevice, "true");
                 break;
@@ -845,6 +857,11 @@ bool parse_options(int argc, char* argv[], Options& out, std::FILE* err) {
         }
     }
 
+    // --source-only streams an input and nothing else, so it needs one.
+    if (error.empty() && out.source_only && out.subcommand.empty() && !out.was_given(Opt::Input)) {
+        fail("--source-only needs --input: there is nothing to stream without a capture device");
+    }
+
     // --no-control with --control-socket is contradictory, so refuse it.
     if (error.empty() && out.was_given(Opt::NoControl) && out.was_given(Opt::ControlSocket)) {
         fail("--no-control and --control-socket '" + out.control_socket +
@@ -897,6 +914,7 @@ bool parse_options(int argc, char* argv[], Options& out, std::FILE* err) {
             Opt::OutputDelay,  Opt::HookStart,   Opt::HookStop,    Opt::ClientId,
             Opt::Manufacturer, Opt::ProductName, Opt::AudioFormat, Opt::AllowUnpaired,
             Opt::Input,        Opt::PairingCode, Opt::FixedVolume, Opt::ReleaseDevice,
+            Opt::SourceOnly,
         };
         for (Opt opt : DAEMON_ONLY) {
             if (out.was_given(opt)) {

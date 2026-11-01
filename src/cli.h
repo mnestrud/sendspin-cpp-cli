@@ -58,6 +58,7 @@ inline constexpr uint32_t MAX_BUFFER_MS = 2000;
 /// Every option whose provenance the parser tracks, so a config file can layer under argv.
 enum class Opt : unsigned {
     Device,         ///< -o, --output
+    SourceOnly,     ///< --source-only
     ListDevices,    ///< -l
     Name,           ///< -n, --name
     Server,         ///< -s, --server
@@ -121,6 +122,9 @@ struct Options {
 
     /// --fixed-volume: play at full gain, unmuted, and withhold volume and mute from the server.
     bool fixed_volume{false};
+
+    /// --source-only: advertise no player or metadata role; needs --input. An input-only device.
+    bool source_only{false};
 
     /// --release-device: close the output device at stream end instead of holding it.
     bool release_device{false};

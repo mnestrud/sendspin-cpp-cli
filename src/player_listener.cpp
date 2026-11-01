@@ -24,7 +24,7 @@ using sendspin::LogLevel;
 
 static constexpr const char* LOG_TAG = LOG_TAG_PLAYER;
 
-PlayerListener::PlayerListener(sendspin::PlayerRole& player, AudioSink& sink, StateStore* store)
+PlayerListener::PlayerListener(sendspin::PlayerRole* player, AudioSink& sink, StateStore* store)
     : player_(player), sink_(sink), store_(store) {
     // Capture the address, not the reference parameter, which dies with this frame.
     this->sink_.on_frames_played = [target = &player](uint32_t frames, int64_t timestamp) {
@@ -53,7 +53,7 @@ void PlayerListener::on_stream_start() {
         this->on_stream_event(true);
     }
 
-    const sendspin::ServerPlayerStreamObject& params = this->player_.get_current_stream_params();
+    const sendspin::ServerPlayerStreamObject& params = this->player_->get_current_stream_params();
     if (!params.is_complete()) {
         cli_log(LogLevel::WARN,
                 "Stream started without complete parameters -- sink not configured");

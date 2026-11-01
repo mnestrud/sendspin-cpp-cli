@@ -210,11 +210,20 @@ bool PulseAudioSource::resolve_source_(std::string& error, int timeout_ms) {
     this->record_from_.clear();
     this->looped_sink_.reset();
     this->looped_sink_name_.clear();
+    this->resolved_rate_ = 0;
     if (this->device_.empty()) {
         if (this->loopback_) {
             this->record_from_ = DEFAULT_MONITOR;
             this->looped_sink_ = "";
             this->looped_sink_name_ = default_sink_name(this->conn_, timeout_ms);
+            std::vector<PulseSinkInfo> sinks;
+            if (sendspin_cli::list_sinks(this->conn_, sinks, timeout_ms)) {
+                for (const PulseSinkInfo& info : sinks) {
+                    if (info.name == this->looped_sink_name_) {
+                        this->resolved_rate_ = info.spec.rate;
+                    }
+                }
+            }
         }
         return true;
     }
@@ -235,6 +244,7 @@ bool PulseAudioSource::resolve_source_(std::string& error, int timeout_ms) {
         if (!source->monitor_of_sink.empty()) {
             this->looped_sink_ = source->monitor_of_sink;
         }
+        this->resolved_rate_ = source->spec.rate;
         return true;
     }
 
@@ -253,11 +263,25 @@ bool PulseAudioSource::resolve_source_(std::string& error, int timeout_ms) {
     }
     this->record_from_ = sink->monitor_source;
     this->looped_sink_ = sink->name;
+    this->resolved_rate_ = sink->spec.rate;
     return true;
 }
 
 bool PulseAudioSource::negotiate(StreamFormat& format, std::string& error) {
     settle_server_capture_format(format);
+    // A monitor runs at its sink's rate; capturing at that rate spares the sound server a
+    // resample on every chunk (the Sendspin server resamples centrally anyway).
+    if (this->loopback_) {
+        if (!this->conn_.ready() && !this->conn_.connect(error, PULSE_TIMEOUT_MS)) {
+            return false;
+        }
+        if (!this->resolve_source_(error, PULSE_TIMEOUT_MS)) {
+            return false;
+        }
+        if (this->resolved_rate_ != 0) {
+            format.sample_rate = this->resolved_rate_;
+        }
+    }
     if (!this->open_(format, PULSE_TIMEOUT_MS, error)) {
         error += " -- run with -l to list this host's capture devices";
         return false;

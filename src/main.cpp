@@ -400,10 +400,10 @@ class ControlDispatcher final : public ControlHandler {
 public:
     /// Every reference must outlive this dispatcher, which in main() they all do.
     ControlDispatcher(const Options& opts, sendspin::SendspinClient& client,
-                      sendspin::ControllerRole& controller, sendspin::MetadataRole& metadata,
+                      sendspin::ControllerRole& controller, sendspin::MetadataRole* metadata,
                       const MetadataLogger& metadata_logger,
                       const PairingListener& pairing_listener,
-                      const PlayerListener& player_listener, sendspin::PlayerRole& player,
+                      const PlayerListener& player_listener, sendspin::PlayerRole* player,
                       const AudioSink& sink, const SourceCapture* capture,
                       const StateStore& state_store)
         : opts_(opts),
@@ -465,8 +465,12 @@ public:
 
         // Handled locally: update_output_delay() persists and republishes; safe on the main loop.
         if (request.command == ControlCommand::Delay) {
+            if (this->player_ == nullptr) {
+                return encode_control_reply(ControlStatus::Failed,
+                                            "no player role under --source-only", "");
+            }
             const uint16_t delay_ms = request.delay_ms.value_or(0);
-            this->player_.update_output_delay(delay_ms);
+            this->player_->update_output_delay(delay_ms);
             // The listener only logs server-set delays, so log this one here.
             log_line(LogLevel::INFO, LOG_TAG_PLAYER, "Output delay set to %u ms locally",
                      static_cast<unsigned>(delay_ms));
@@ -519,8 +523,8 @@ private:
             if (metadata->progress.has_value()) {
                 // Only a progress object makes transport state and position knowable.
                 snapshot.playback_speed = metadata->progress->playback_speed;
-                snapshot.progress_ms = this->metadata_.get_track_progress_ms();
-                snapshot.duration_ms = this->metadata_.get_track_duration_ms();
+                snapshot.progress_ms = this->metadata_->get_track_progress_ms();
+                snapshot.duration_ms = this->metadata_->get_track_duration_ms();
             }
         }
 
@@ -542,7 +546,8 @@ private:
         snapshot.player_muted = this->player_listener_.applied_muted();
         snapshot.player_volume_source = this->player_listener_.volume_source();
         // From the role: `delay` changes it without invoking the listener.
-        snapshot.output_delay_ms = this->player_.get_output_delay_ms();
+        snapshot.output_delay_ms =
+            (this->player_ != nullptr) ? this->player_->get_output_delay_ms() : 0;
         snapshot.output = this->sink_.name();
         if (this->capture_ != nullptr) {
             snapshot.input = this->capture_->name();
@@ -555,12 +560,12 @@ private:
     const Options& opts_;
     sendspin::SendspinClient& client_;
     sendspin::ControllerRole& controller_;
-    sendspin::MetadataRole& metadata_;
+    sendspin::MetadataRole* metadata_;  ///< null under --source-only
     const MetadataLogger& metadata_logger_;
     const PairingListener& pairing_listener_;
     const PlayerListener& player_listener_;
     /// Non-const only for `delay`.
-    sendspin::PlayerRole& player_;
+    sendspin::PlayerRole* player_;  ///< null under --source-only
     const AudioSink& sink_;
     const SourceCapture* capture_;  ///< null without --input
     const StateStore& state_store_;
@@ -847,6 +852,11 @@ int main(int argc, char* argv[]) {
                  "--allow-unpaired to let any server play");
     }
 
+    // --source-only: an input-only device advertises neither playback nor a display, so a
+    // server registers it as an audio input and nothing else.
+    sendspin::PlayerRole* player = nullptr;
+    sendspin::MetadataRole* metadata = nullptr;
+    if (!opts.source_only) {
     std::vector<sendspin::AudioSupportedFormatObject> formats = advertised_formats(*sink);
     // Pins reorder the advertised list; a pin it does not carry stops the run.
     if (!opts.audio_formats.empty()) {
@@ -873,13 +883,14 @@ int main(int argc, char* argv[]) {
 
     // A first-run default: a persisted delay wins. Set before add_player() loads it.
     player_config.initial_output_delay_ms = opts.output_delay_ms;
-    sendspin::PlayerRole& player = client.add_player(std::move(player_config));
+    player = &client.add_player(std::move(player_config));
     // Also what makes the stored delay apply: non-adjustable delays are ignored.
-    player.set_output_delay_adjustable(true);
+    player->set_output_delay_adjustable(true);
     // Withheld together: a mute the server could still set would silence a fixed level.
-    player.set_volume_adjustable(!opts.fixed_volume);
-    player.set_mute_adjustable(!opts.fixed_volume);
-    sendspin::MetadataRole& metadata = client.add_metadata();
+    player->set_volume_adjustable(!opts.fixed_volume);
+    player->set_mute_adjustable(!opts.fixed_volume);
+    metadata = &client.add_metadata();
+    }
     // Always added: advertised roles are a property of the build, not of --no-control.
     sendspin::ControllerRole& controller = client.add_controller();
 
@@ -918,8 +929,12 @@ int main(int argc, char* argv[]) {
 
     client.set_listener(&pairing_listener);
 
-    player.set_listener(&player_listener);
-    metadata.set_listener(&metadata_logger);
+    if (player != nullptr) {
+        player->set_listener(&player_listener);
+    }
+    if (metadata != nullptr) {
+        metadata->set_listener(&metadata_logger);
+    }
     client.set_network_provider(&network_provider);
 
     // Seed the sink before connecting, so the role reports what the sink applies.
@@ -953,8 +968,10 @@ int main(int argc, char* argv[]) {
                  static_cast<unsigned>(volume), muted ? " (muted)" : "",
                  state_store.path().c_str());
     }
-    player.update_volume(volume);
-    player.update_muted(muted);
+    if (player != nullptr) {
+        player->update_volume(volume);
+        player->update_muted(muted);
+    }
 
     if (!client.start()) {
         log_fatal(LOG_TAG, "could not start the Sendspin client on port %u", opts.port);
