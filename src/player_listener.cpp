@@ -26,10 +26,13 @@ static constexpr const char* LOG_TAG = LOG_TAG_PLAYER;
 
 PlayerListener::PlayerListener(sendspin::PlayerRole* player, AudioSink& sink, StateStore* store)
     : player_(player), sink_(sink), store_(store) {
-    // Capture the address, not the reference parameter, which dies with this frame.
-    this->sink_.on_frames_played = [target = &player](uint32_t frames, int64_t timestamp) {
-        target->notify_audio_played(frames, timestamp);
-    };
+    // Captured by value: the pointer outlives this frame. Null under --source-only, where the
+    // sink never plays, so the callback is left unset.
+    if (player != nullptr) {
+        this->sink_.on_frames_played = [target = player](uint32_t frames, int64_t timestamp) {
+            target->notify_audio_played(frames, timestamp);
+        };
+    }
 }
 
 size_t PlayerListener::on_audio_write(uint8_t* data, size_t length, uint32_t timeout_ms) {
