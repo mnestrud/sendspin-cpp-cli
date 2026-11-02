@@ -59,6 +59,7 @@ inline constexpr uint32_t MAX_BUFFER_MS = 2000;
 enum class Opt : unsigned {
     Device,         ///< -o, --output
     SourceOnly,     ///< --source-only
+    InputFormat,    ///< --input-format
     ListDevices,    ///< -l
     Name,           ///< -n, --name
     Server,         ///< -s, --server
@@ -125,6 +126,12 @@ struct Options {
 
     /// --source-only: advertise no player or metadata role; needs --input. An input-only device.
     bool source_only{false};
+
+    /// --input-format <rate:depth:channels>: the capture format to ask the input device for first,
+    /// for a device that accepts a format it does not really deliver. 0 leaves a field at its default.
+    uint32_t input_rate{0};
+    uint8_t input_bit_depth{0};
+    uint8_t input_channels{0};
 
     /// --release-device: close the output device at stream end instead of holding it.
     bool release_device{false};

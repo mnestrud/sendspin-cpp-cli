@@ -80,6 +80,7 @@ enum LongOnly {
     OPT_PAIRING_CODE,
     OPT_FIXED_VOLUME,
     OPT_SOURCE_ONLY,
+    OPT_INPUT_FORMAT,
     OPT_RELEASE_DEVICE,
 };
 
@@ -122,6 +123,7 @@ const std::vector<SettableOption>& settable_options() {
         {Opt::PairingCode, "pairing-code", "--pairing-code"},
         {Opt::FixedVolume, "fixed-volume", "--fixed-volume"},
         {Opt::SourceOnly, "source-only", "--source-only"},
+        {Opt::InputFormat, "input-format", "--input-format"},
         {Opt::ReleaseDevice, "release-device", "--release-device"},
     };
     return table;
@@ -433,6 +435,24 @@ bool apply_option(const SettableOption& option, const std::string& value, Option
                 return false;
             }
             break;
+        case Opt::InputFormat: {
+            unsigned rate = 0;
+            unsigned depth = 0;
+            unsigned channels = 0;
+            char trailing = 0;
+            if (std::sscanf(value.c_str(), "%u:%u:%u%c", &rate, &depth, &channels, &trailing) != 3 ||
+                rate > 384000 || (depth != 16 && depth != 24 && depth != 32) || channels < 1 ||
+                channels > 8) {
+                error = "invalid --input-format '" + value +
+                        "' -- expected <rate>:<16|24|32>:<channels>, e.g. 48000:32:2";
+                return false;
+            }
+            out.input_rate = rate;
+            out.input_bit_depth = static_cast<uint8_t>(depth);
+            out.input_channels = static_cast<uint8_t>(channels);
+            break;
+        }
+            break;
         case Opt::ReleaseDevice:
             if (!parse_bool(value, out.release_device)) {
                 error = "invalid --release-device '" + value + "' -- expected true or false";
@@ -617,6 +637,7 @@ bool parse_options(int argc, char* argv[], Options& out, std::FILE* err) {
         {"pairing-code", required_argument, nullptr, OPT_PAIRING_CODE},
         {"fixed-volume", no_argument, nullptr, OPT_FIXED_VOLUME},
         {"source-only", no_argument, nullptr, OPT_SOURCE_ONLY},
+        {"input-format", required_argument, nullptr, OPT_INPUT_FORMAT},
         {"release-device", no_argument, nullptr, OPT_RELEASE_DEVICE},
         {nullptr, 0, nullptr, 0},
     };
@@ -766,6 +787,9 @@ bool parse_options(int argc, char* argv[], Options& out, std::FILE* err) {
             case OPT_SOURCE_ONLY:
                 apply(Opt::SourceOnly, "true");
                 break;
+            case OPT_INPUT_FORMAT:
+                apply(Opt::InputFormat, optarg);
+                break;
             case OPT_RELEASE_DEVICE:
                 apply(Opt::ReleaseDevice, "true");
                 break;
@@ -914,7 +938,7 @@ bool parse_options(int argc, char* argv[], Options& out, std::FILE* err) {
             Opt::OutputDelay,  Opt::HookStart,   Opt::HookStop,    Opt::ClientId,
             Opt::Manufacturer, Opt::ProductName, Opt::AudioFormat, Opt::AllowUnpaired,
             Opt::Input,        Opt::PairingCode, Opt::FixedVolume, Opt::ReleaseDevice,
-            Opt::SourceOnly,
+            Opt::SourceOnly,   Opt::InputFormat,
         };
         for (Opt opt : DAEMON_ONLY) {
             if (out.was_given(opt)) {

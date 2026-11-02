@@ -767,6 +767,16 @@ int main(int argc, char* argv[]) {
     StreamFormat capture_format{source_config.sample_rate, source_config.channels,
                                 source_config.bit_depth};
     if (opts.was_given(Opt::Input)) {
+        // --input-format pins what the device is asked for first; the device still has the last word.
+        if (opts.input_rate != 0) {
+            capture_format.sample_rate = opts.input_rate;
+        }
+        if (opts.input_bit_depth != 0) {
+            capture_format.bit_depth = opts.input_bit_depth;
+        }
+        if (opts.input_channels != 0) {
+            capture_format.channels = opts.input_channels;
+        }
         std::string source_error;
         source = make_audio_source(opts.input, capture_format, source_error);
         if (!source) {
