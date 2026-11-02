@@ -14,6 +14,8 @@
 
 #include "audio_source.h"
 
+#include "capture_clock.h"
+
 #include "log.h"
 #include "null_source.h"
 #include "sink_recovery.h"
@@ -153,6 +155,9 @@ void SourceCapture::run_() {
     uint64_t window_frames = 0;
     auto window_start = std::chrono::steady_clock::now();
 
+    CaptureClock clock(this->format_.sample_rate);
+    auto stats_start = std::chrono::steady_clock::now();
+
     bool open = false;
     int64_t retry_ms = SINK_RESCAN_DELAY_MS;
     while (this->wait_(0)) {
@@ -169,6 +174,7 @@ void SourceCapture::run_() {
                 continue;
             }
             retry_ms = SINK_RESCAN_DELAY_MS;
+            clock.reset();
         }
 
         int64_t capture_time_us = 0;
@@ -188,8 +194,16 @@ void SourceCapture::run_() {
         if (bytes == 0) {
             continue;
         }
+        capture_time_us = clock.stamp(capture_time_us, static_cast<size_t>(bytes) / bytes_per_frame);
         // A refused write is the role's drop policy at work, not ours to retry.
         this->writer_(buffer.data(), static_cast<size_t>(bytes), capture_time_us);
+        if (std::chrono::steady_clock::now() - stats_start >= std::chrono::seconds(60)) {
+            stats_start = std::chrono::steady_clock::now();
+            log_line(LogLevel::INFO, LOG_TAG,
+                     "Input clock: stamp jitter up to %lld us, drift correction %lld us, %u re-anchors",
+                     static_cast<long long>(clock.take_max_error_us()),
+                     static_cast<long long>(clock.correction_us()), clock.reanchors());
+        }
 
         // An unclocked PCM such as ALSA's `null` never blocks; hold it near real time.
         window_frames += static_cast<size_t>(bytes) / bytes_per_frame;
