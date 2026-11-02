@@ -163,6 +163,7 @@ bool AlsaAudioSource::open(const StreamFormat& format) {
     snd_pcm_hw_params_alloca(&hw);
     unsigned int buffer_time = BUFFER_TIME_US;
     unsigned int period_time = PERIOD_TIME_US;
+    snd_pcm_uframes_t buffer_frames = 0;
     err = snd_pcm_hw_params_any(this->pcm_, hw);
     if (err >= 0) {
         err = snd_pcm_hw_params_set_access(this->pcm_, hw, SND_PCM_ACCESS_RW_INTERLEAVED);
@@ -178,7 +179,14 @@ bool AlsaAudioSource::open(const StreamFormat& format) {
         err = snd_pcm_hw_params_set_rate(this->pcm_, hw, format.sample_rate, 0);
     }
     if (err >= 0) {
-        err = snd_pcm_hw_params_set_buffer_time_near(this->pcm_, hw, &buffer_time, nullptr);
+        // The largest buffer the device offers, not BUFFER_TIME_US: a capture ring only ever
+        // needs headroom, and some drivers (LG webOS's LGSIC MixerCapture) overrun once per
+        // hardware-ring wrap whenever the buffer is smaller than that ring. Latency comes from
+        // the period and the read cadence, not from the buffer size.
+        err = snd_pcm_hw_params_set_buffer_size_last(this->pcm_, hw, &buffer_frames);
+        if (err < 0) {
+            err = snd_pcm_hw_params_set_buffer_time_near(this->pcm_, hw, &buffer_time, nullptr);
+        }
     }
     if (err >= 0) {
         err = snd_pcm_hw_params_set_period_time_near(this->pcm_, hw, &period_time, nullptr);
@@ -204,8 +212,9 @@ bool AlsaAudioSource::open(const StreamFormat& format) {
     this->rate_ = format.sample_rate;
     this->bytes_per_frame_ =
         static_cast<size_t>(format.channels) * (static_cast<size_t>(format.bit_depth) / 8U);
-    cli_log(LogLevel::INFO, "alsa: input '%s' open at %u Hz, %u ch, %u-bit", this->device_.c_str(),
-            format.sample_rate, format.channels, format.bit_depth);
+    cli_log(LogLevel::INFO, "alsa: input '%s' open at %u Hz, %u ch, %u-bit, buffer %lu frames",
+            this->device_.c_str(), format.sample_rate, format.channels, format.bit_depth,
+            static_cast<unsigned long>(buffer_frames));
     return true;
 }
 
