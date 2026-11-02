@@ -60,6 +60,7 @@ enum class Opt : unsigned {
     Device,         ///< -o, --output
     SourceOnly,     ///< --source-only
     InputFormat,    ///< --input-format
+    WaitForServer,  ///< --wait-for-server
     ListDevices,    ///< -l
     Name,           ///< -n, --name
     Server,         ///< -s, --server
@@ -126,6 +127,10 @@ struct Options {
 
     /// --source-only: advertise no player or metadata role; needs --input. An input-only device.
     bool source_only{false};
+
+    /// --wait-for-server: browse `_sendspin-server._tcp` and advertise `_sendspin._tcp` only once a
+    /// server has been seen. Needs mDNS; has no effect with -s or --no-mdns.
+    bool wait_for_server{false};
 
     /// --input-format <rate:depth:channels>: the capture format to ask the input device for first,
     /// for a device that accepts a format it does not really deliver. 0 leaves a field at its default.

@@ -1009,7 +1009,21 @@ int main(int argc, char* argv[]) {
 
     // The first client.loop() tick starts the listener after mDNS registration.
     MdnsService mdns;
-    start_advertising(mdns, opts);
+    // --wait-for-server: browse for a server first, and advertise only once one has been seen.
+    const bool wait_for_server = opts.wait_for_server && opts.advertises() && mdns_available();
+    bool advertising = !wait_for_server;
+    int64_t next_server_check_ms = 0;
+    if (wait_for_server) {
+        std::string error;
+        if (!mdns.browse(error)) {
+            log_line(LogLevel::WARN, LOG_TAG_DISCOVERY, "%s -- retrying", error.c_str());
+        }
+        log_line(LogLevel::INFO, LOG_TAG_DISCOVERY,
+                 "Looking for a Sendspin server on %s; not advertising %s until one is seen",
+                 MDNS_SERVER_SERVICE, MDNS_CLIENT_SERVICE);
+    } else {
+        start_advertising(mdns, opts);
+    }
 
     ControlDispatcher control_dispatcher(opts, client, controller, metadata, metadata_logger,
                                          pairing_listener, player_listener, player, *sink,
@@ -1065,6 +1079,17 @@ int main(int argc, char* argv[]) {
         client.loop();
         // All three need their callbacks on the main loop.
         mdns.poll(now_ms);
+        if (!advertising && now_ms >= next_server_check_ms) {
+            next_server_check_ms = now_ms + 1000;
+            const std::vector<DiscoveredServer> servers = mdns.servers();
+            if (!servers.empty()) {
+                const DiscoveredServer& found = servers.front();
+                log_line(LogLevel::INFO, LOG_TAG_DISCOVERY, "Found Sendspin server \"%s\"; advertising",
+                         found.name.empty() ? found.instance.c_str() : found.name.c_str());
+                start_advertising(mdns, opts);
+                advertising = true;
+            }
+        }
         control_socket.poll(now_ms, control_dispatcher);
         if (outbound) {
             outbound->tick(client, now_ms);

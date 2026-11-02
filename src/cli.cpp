@@ -81,6 +81,7 @@ enum LongOnly {
     OPT_FIXED_VOLUME,
     OPT_SOURCE_ONLY,
     OPT_INPUT_FORMAT,
+    OPT_WAIT_FOR_SERVER,
     OPT_RELEASE_DEVICE,
 };
 
@@ -124,6 +125,7 @@ const std::vector<SettableOption>& settable_options() {
         {Opt::FixedVolume, "fixed-volume", "--fixed-volume"},
         {Opt::SourceOnly, "source-only", "--source-only"},
         {Opt::InputFormat, "input-format", "--input-format"},
+        {Opt::WaitForServer, "wait-for-server", "--wait-for-server"},
         {Opt::ReleaseDevice, "release-device", "--release-device"},
     };
     return table;
@@ -435,6 +437,12 @@ bool apply_option(const SettableOption& option, const std::string& value, Option
                 return false;
             }
             break;
+        case Opt::WaitForServer:
+            if (!parse_bool(value, out.wait_for_server)) {
+                error = "invalid --wait-for-server '" + value + "' -- expected true or false";
+                return false;
+            }
+            break;
         case Opt::InputFormat: {
             unsigned rate = 0;
             unsigned depth = 0;
@@ -638,6 +646,7 @@ bool parse_options(int argc, char* argv[], Options& out, std::FILE* err) {
         {"fixed-volume", no_argument, nullptr, OPT_FIXED_VOLUME},
         {"source-only", no_argument, nullptr, OPT_SOURCE_ONLY},
         {"input-format", required_argument, nullptr, OPT_INPUT_FORMAT},
+        {"wait-for-server", no_argument, nullptr, OPT_WAIT_FOR_SERVER},
         {"release-device", no_argument, nullptr, OPT_RELEASE_DEVICE},
         {nullptr, 0, nullptr, 0},
     };
@@ -790,6 +799,9 @@ bool parse_options(int argc, char* argv[], Options& out, std::FILE* err) {
             case OPT_INPUT_FORMAT:
                 apply(Opt::InputFormat, optarg);
                 break;
+            case OPT_WAIT_FOR_SERVER:
+                apply(Opt::WaitForServer, "true");
+                break;
             case OPT_RELEASE_DEVICE:
                 apply(Opt::ReleaseDevice, "true");
                 break;
@@ -938,7 +950,7 @@ bool parse_options(int argc, char* argv[], Options& out, std::FILE* err) {
             Opt::OutputDelay,  Opt::HookStart,   Opt::HookStop,    Opt::ClientId,
             Opt::Manufacturer, Opt::ProductName, Opt::AudioFormat, Opt::AllowUnpaired,
             Opt::Input,        Opt::PairingCode, Opt::FixedVolume, Opt::ReleaseDevice,
-            Opt::SourceOnly,   Opt::InputFormat,
+            Opt::SourceOnly,   Opt::InputFormat, Opt::WaitForServer,
         };
         for (Opt opt : DAEMON_ONLY) {
             if (out.was_given(opt)) {
@@ -1161,6 +1173,10 @@ void print_usage(std::FILE* out, const char* prog) {
     std::fprintf(out, "                flag is visible to every local user in 'ps'\n");
     std::fprintf(out, "  --no-mdns     Do not advertise over mDNS (no effect with -s, which\n");
     std::fprintf(out, "                already suppresses it)\n");
+    std::fprintf(out, "  --wait-for-server\n");
+    std::fprintf(out, "                Advertise only once a Sendspin server is seen on mDNS\n");
+    std::fprintf(out, "                (%s); until then nothing is advertised\n",
+                 MDNS_SERVER_SERVICE);
     std::fprintf(out, "  --mdns-name <name>\n");
     std::fprintf(out, "                Instance name to advertise (default: -n). Unused with -s\n");
     std::fprintf(out, "  --control-socket <path>\n");
